@@ -2,7 +2,7 @@
 Get Octopus Agile and draw a bar chart
 ======================================
 
-Needs
+This package needs the following pre-requisites:
 
 libmysql-dev (or MariaDB equivalent)
 
@@ -11,6 +11,11 @@ https://github.com/json-c/json-c
 libcurl-dev
 
 cmake
+
+[Chart.js](https://www.chartjs.org/docs/latest/getting-started/installation.html)
+
+[JQuery](https://jquery.com/download/)
+
 
 Code changes
 ------------
@@ -38,6 +43,7 @@ mkdir build
 cd build
 cmake ..
 make
+mysql -h 192.168.3.14 -u MySQLUser -p  < Agile_tariffs.sql
 ```
 
 Run `getTariffs` daily after 16:00 (when the new tariffs are available) probably with a crontab entry (or more than one as the tariffs are often late). I run it at 16:30, 17:30 and 22:30.

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Agile Tariff</title>
+
+    <script src="chartjs/Chart.js"></script>
+    <script src="jquery.js"></script>
+    <script src="barChart.js"></script>
+</head>
+<style>
+    body{
+        text-align: center;
+    }
+    .container {
+        width: 75%;
+        height: 75%;
+        position: relative;
+        display: -webkit-inline-box;
+        margin-bottom: 100px;
+    }
+    #loadingMessage{
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+</style>
+<body onload="getData();">
+    <h1>Agile Tariff</h1>
+    <!--button id="renderBtn">
+        Load
+    </button -->
+    <br><br>
+    <div class="container">
+        <div id="loadingMessage"></div>        
+        <canvas id="myChart"></canvas>
+    </div>
+</body>
+
+
+</html>
