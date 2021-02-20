@@ -154,55 +154,20 @@ int main(int argc, char* argv[])
 	}
 
 		printf(",\"price\":%f", price);
-		if (price > 25.0)
-		{
-		//                      dark red     
-			sprintf(backgroundColour,"167 ,22 ,23");
-		}
-		else if (price > 20.0) 
-		{
-		//                      red     
-			sprintf(backgroundColour,"255 ,0 ,21");
-	        }
-	       	else if (price > 15.0)
-	       	{
-		//                      light red     
-			sprintf(backgroundColour,"250 ,116 ,97");
-		}
-	       	else if (price > 10.0)
-	       	{
-		//                      dark green     
-			sprintf(backgroundColour,"0 ,100 ,0");
-		}
- 	      	else if (price > 5.0)
-		{
-		//                      green     
-			sprintf(backgroundColour,"61 ,186 ,20");
-		}
-		else if (price > 0.0)
-		{
-		//                      light green      
-			sprintf(backgroundColour,"144 ,238 ,144");
-		}
-		else if (price > -5.0)
-		{
-		//                      light blue     
-			sprintf(backgroundColour,"197 ,208 ,232");
-		}
-		else if (price > -10.0)
-		{
-		//                      blue     
-			sprintf(backgroundColour,"0 ,18 ,255");
-		}
-		else
-		{
-		//                      dark blue     
-			sprintf(backgroundColour,"0 ,0 ,139");
-		}
+
+  		if (price > 25.0) { sprintf(backgroundColour,"255,0,0"); }
+  		else if (price > 20.0) {sprintf(backgroundColour,"223,54,2"); }
+  	       	else if (price > 15.0) { sprintf(backgroundColour,"211,110,0"); }
+  	       	else if (price > 10.0) { sprintf(backgroundColour,"215,183,3"); }
+   	      	else if (price > 5.0) { sprintf(backgroundColour,"109,253,30"); }
+  		else if (price > 0.0) { sprintf(backgroundColour,"14 ,198 ,14"); }
+  		else if (price > -5.0) { sprintf(backgroundColour,"6,196,191"); }
+  		else if (price > -10.0) { sprintf(backgroundColour,"0,0,255"); }
+  		else { sprintf(backgroundColour,"0 ,0 ,139"); }
 		printf(",\"backgroundColor\":\"rgba(%s, %s)\"", backgroundColour, density);
 		printf(",\"borderColor\":\"rgb(%s)\"",backgroundColour);
 		printf("}\n");
- 
+
 		comma=",";
 		rc = mysql_stmt_fetch(stmt);
 	}
