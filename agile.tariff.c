@@ -1,3 +1,7 @@
+/* 
+ Copyright © Dougie Lawson, 2020-2021, All rights reserved 
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

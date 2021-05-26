@@ -1,5 +1,3 @@
-CREATE DATABASE EV;
-
 -- 
 
 CREATE TABLE `Agile_tariffs` (

@@ -25,6 +25,7 @@ To configure this for your Raspberry Pi and your Octopus tariff.
 * MySQL/MaridDB credentials in both getTariffs.c &amp; agile.tariff.c
   * Change `const char* d_host ="192.168.3.14";` to your MySQL server
   * Change `const char* d_db = "EV";` to your MySQL database name
+  * Change `const char* d_db = "Octo";` to your MySQL database name
   * Change `const char* d_user = "MySQLUser";` to your MySQL username
   * Change `const char* d_pwd = "MySQLPwd";` to your MySQL password
 * Octopus Region ID in getTariffs.c

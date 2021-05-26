@@ -2,16 +2,19 @@
  Copyright © Dougie Lawson, 2020-2021, All rights reserved 
 */
 #define _XOPEN_SOURCE 700
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <curl/curl.h>
 #include "json-c/json.h"
 #include <mysql.h>
 #include <time.h>
+#include <stdio.h>
+#include <string.h>
+#include <pcre.h>
 #define COLUMN_COUNT 3
+#define FALSE 0
+#define TRUE 1 
 #include <libconfig.h>
 #define CONFIG_FILE "/home/pi/.zappi.cfg"
 
@@ -27,20 +30,132 @@ char* unk_string;
 char nameBuff[24];
 FILE* outfile;
 
-enum { unk, countj, exVAT, incVAT, from, to };
-double ex_VAT;
-double inc_VAT;
+enum { unk, cons, from, to, counter };
+double consumption;
 char* t_from;
 char* t_to;
+char last_value[100];
+
+struct tm* to_gmt;
 
 MYSQL* con;
 MYSQL_STMT *stmt;
 int row_count;
-
 const char* d_host;
 const char* d_db;
 const char* d_user;
 const char* d_pwd;
+const char* api_key;
+const char* elec_mpan;
+const char* elec_ser;
+
+int convert(char* timestr)
+{
+	pcre *regComp;
+	pcre_extra *pcreExtra;
+	char* aStrRegex = "([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):[0-9]{2}(Z|\\+|-)(([0-9]{2}):([0-9]{2}))?";
+	const char* pcreErrorStr;
+	int pcreErrorOffset;
+	int pcreExecRet;
+	int subStrVec[30];
+	const char* yearStr;
+	const char* monthStr;
+	const char* mdayStr;
+	const char* hourStr;
+	const char* minStr;
+	const char* zPlusMinus;
+	const char* offHour;
+	const char* offMin;
+	char chars[30];
+	char *token1;
+	char *token2;
+	char *token3;
+	time_t unixtime;
+	struct tm not_gmt;
+//	struct tm ok_gmt;
+	int hour_o, min_o, offset;
+	int y, mo, d, h, mi, s;
+  	regComp = pcre_compile(aStrRegex, PCRE_CASELESS, &pcreErrorStr, &pcreErrorOffset, NULL);
+	if (regComp == NULL) 
+	{
+		printf("Error: %s %s\n", aStrRegex, pcreErrorStr);
+		exit(1);
+	}
+	pcreExtra = pcre_study(regComp, 0, &pcreErrorStr);
+	if (pcreErrorStr != NULL)
+	{
+		printf("Study: %s %s\n", aStrRegex, pcreErrorStr);
+		exit(1);
+	}
+	pcreExecRet = pcre_exec(regComp, pcreExtra, timestr, strlen(timestr), 0, 0, subStrVec, 30);
+	if (pcreExecRet > 0)
+	{
+
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 1, &(yearStr));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 2, &(monthStr));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 3, &(mdayStr));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 4, &(hourStr));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 5, &(minStr));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 6, &(zPlusMinus));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 8, &(offHour));
+		pcre_get_substring(timestr, subStrVec, pcreExecRet, 9, &(offMin));
+
+		sscanf(yearStr, "%d", &y);
+		sscanf(monthStr, "%d", &mo);
+		sscanf(mdayStr, "%d", &d);
+		sscanf(hourStr, "%d", &h);
+		sscanf(minStr, "%d", &mi);
+
+		not_gmt.tm_year = y - 1900;
+		not_gmt.tm_mon = mo - 1;
+		not_gmt.tm_mday = d;
+		not_gmt.tm_hour = h;
+		not_gmt.tm_min = mi;
+		not_gmt.tm_sec = 0;
+
+		unixtime = mktime(&not_gmt);
+
+		if (pcreExecRet == 10)
+		{	
+			sscanf(offHour, "%d", &hour_o);
+			sscanf(offMin, "%d", &min_o);
+			if (strcmp(zPlusMinus, "+") == 0)
+			{
+//		printf(" +VE ");
+				unixtime -= ((60 * min_o) + (3600 * hour_o));
+			}
+			else {
+//		printf(" -VE ");
+				unixtime += ((60 * min_o) + (3600 * hour_o));
+			}
+//	printf("%04d-%02d-%02d, %02d:%02d %s%02d:%02d  ", y, mo, d, h, mi, zPlusMinus, hour_o, min_o);
+		}
+//else { 
+//	printf("%04d-%02d-%02d, %02d:%02d  ", y, mo, d, h, mi);
+//}
+
+		to_gmt = gmtime(&unixtime);
+	}
+	else if (pcreExecRet < 0)
+	{
+		switch(pcreExecRet)
+		{
+			case PCRE_ERROR_NOMATCH : printf("No match\n"); break;
+			case PCRE_ERROR_NULL : printf("Null\n"); break;
+			case PCRE_ERROR_BADOPTION : printf("Bad opt\n"); break;
+			case PCRE_ERROR_BADMAGIC : printf("Voodoo\n"); break;
+			case PCRE_ERROR_UNKNOWN_NODE : printf("Something kooky\n"); break;
+			case PCRE_ERROR_NOMEMORY : printf("Oom\n"); break;
+			default : printf("Very bad\n"); break;
+		}
+	}
+	else
+	{
+		printf("No error, but no match");
+	}
+
+	sprintf(chars, "%s", timestr);	
+}
 
 static size_t curl_print(void* ptr, size_t size, size_t nmemb, void* stream)
 {
@@ -50,17 +165,19 @@ static size_t curl_print(void* ptr, size_t size, size_t nmemb, void* stream)
 
 char* makeURL ()
 {
+
 	time_t t, sT, eT;
 	struct tm pf;
 	struct tm pt;
 	t = time(NULL);
-	sT = t - (48*60*60);
-	eT = t + (48*60*60);
+	sT = t - (14*24*60*60); 
+	eT = t + (24*60*60);
 	pf = *gmtime(&sT);
 	pt = *gmtime(&eT);
-	char* url = malloc(256);
-	sprintf(url, "https://api.octopus.energy/v1/products/AGILE-18-02-21/electricity-tariffs/E-1R-AGILE-18-02-21-H/standard-unit-rates/?page_size=1500&period_from=%4d-%02d-%02dT00:00Z&period_to=%4d-%02d-%02dT23:30Z", pf.tm_year + 1900, pf.tm_mon + 1, pf.tm_mday, pt.tm_year + 1900, pt.tm_mon + 1, pt.tm_mday);
+	char* url = malloc(512);
+	sprintf(url, "https://api.octopus.energy/v1/electricity-meter-points/%s/meters/%s/consumption?order_by=period&page_size=30000&period_from=%4d-%02d-%02dT00:00Z&period_to=%4d-%02d-%02dT23:30Z",elec_mpan, elec_ser, pf.tm_year + 1900, pf.tm_mon + 1, pf.tm_mday, pt.tm_year + 1900, pt.tm_mon + 1, pt.tm_mday);
 
+	//printf("%s\n", url);
 	return url;
 }
 
@@ -73,8 +190,9 @@ void curlGET(void)
  
 	curl = curl_easy_init();
 	if(curl) {
-
+		curl_easy_setopt(curl, CURLOPT_USERNAME, api_key); 
 		curl_easy_setopt(curl, CURLOPT_URL, makeURL());
+		curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_print);
 
 		outfile = fopen(nameBuff, "wb");
@@ -127,20 +245,21 @@ void sql_init()
 	{
 		exit_on_error("Connect", con);
 	}
-
+ 
 	stmt = mysql_stmt_init(con);
 	if (!stmt) 
 	{
 		exit_on_error("Stmt init", con);
 	}
 
-	sql_insert  = "INSERT IGNORE INTO Agile_tariffs(period_start, period_end, price) VALUES( ?, ?, ?)";
+	sql_insert  = "INSERT IGNORE INTO  Agile_usage ( period_from ,  period_to ,  power_usage ) VALUES( ?, ?, ?)";
 	if (mysql_stmt_prepare(stmt, sql_insert, strlen(sql_insert)))
 	{
 		exit_on_error("Stmt prepare", con);
 	}
 
 	row_count = 0;
+
 }
 
 void sql_insert()
@@ -162,14 +281,14 @@ void sql_insert()
 	} 
 
 	memset(bind, 0, sizeof(bind));
-	memset(&tm, 0, sizeof(struct tm));
-	strptime(t_from, "%FT%TZ", &tm);
-
-  	ts_start.year = tm.tm_year + 1900;
-  	ts_start.month = tm.tm_mon + 1;
-  	ts_start.day = tm.tm_mday;
-  	ts_start.hour = tm.tm_hour;
-  	ts_start.minute = tm.tm_min;
+	//printf("ts_start ");
+	convert(t_from);
+	//printf("day: %02d hour: %02d min: %02d \n", to_gmt->tm_mday, to_gmt->tm_hour, to_gmt->tm_min);
+	ts_start.year = to_gmt->tm_year + 1900;
+  	ts_start.month = to_gmt->tm_mon + 1;
+  	ts_start.day = to_gmt->tm_mday;
+  	ts_start.hour = to_gmt->tm_hour;
+  	ts_start.minute = to_gmt->tm_min;
   	ts_start.second = 0;
   	ts_start.second_part = 0;
 
@@ -179,16 +298,16 @@ void sql_insert()
 	bind[0].is_null = is_null[0];
 	bind[0].error = &error[0];
 
-	memset(&tm, 0, sizeof(struct tm));
-	strptime(t_to, "%FT%TZ", &tm);
-
-  	ts_end.year = tm.tm_year + 1900;
-  	ts_end.month = tm.tm_mon + 1;
-  	ts_end.day = tm.tm_mday;
-  	ts_end.hour = tm.tm_hour;
-  	ts_end.minute = tm.tm_min;
-  	ts_end.second = 0;
-  	ts_end.second_part = 0;
+	//printf("ts_end   ");
+  	convert(t_to);
+	//printf("day: %02d hour: %02d min: %02d \n", to_gmt->tm_mday, to_gmt->tm_hour, to_gmt->tm_min);
+	ts_end.year = to_gmt->tm_year + 1900;
+	ts_end.month = to_gmt->tm_mon + 1;
+	ts_end.day = to_gmt->tm_mday;
+	ts_end.hour = to_gmt->tm_hour;
+	ts_end.minute = to_gmt->tm_min;
+	ts_end.second = 0;
+	ts_end.second_part = 0;
 
 	bind[1].buffer_type = MYSQL_TYPE_DATETIME;
 	bind[1].buffer = &ts_end;
@@ -196,8 +315,11 @@ void sql_insert()
 	bind[1].is_null = is_null[1];
 	bind[1].error = &error[1];
 
+	sprintf(last_value, " \"%04d-%02d-%02d %02d:%02d\" - \"%04d-%02d-%02d %02d:%02d\"  %lf \n", ts_start.year, ts_start.month, ts_start.day, ts_start.hour, ts_start.minute, ts_end.year, ts_end.month, ts_end.day, ts_end.hour, ts_end.minute, consumption);
+
+
 	bind[2].buffer_type = MYSQL_TYPE_DOUBLE;
-	bind[2].buffer = &inc_VAT;
+	bind[2].buffer = &consumption;
 	is_null[2] = (my_bool)0;
 	bind[2].is_null = is_null[2];
 	bind[2].error = &error[2];
@@ -231,6 +353,7 @@ int sql_terminate()
 
 	mysql_close(con);
 	mysql_library_end();
+	printf("Last value: %s\n", last_value);
   
 	return 0;
 }
@@ -245,11 +368,10 @@ int lexer(const char *s)
 	token_table[] =
 	{
 		{ "Unknown", unk },
-		{ "count", countj },
-		{ "value_exc_vat", exVAT },
-		{ "value_inc_vat", incVAT },
-		{ "valid_from", from },
-		{ "valid_to", to },
+		{ "consumption", cons },
+		{ "interval_start", from },
+		{ "interval_end", to },
+		{ "count", counter},
 	};
 	struct entry_s *p = token_table;
 	for(; p->key != NULL && strcmp(p->key, s) != 0; ++p);
@@ -270,26 +392,23 @@ json_object* print_json_value(json_object* jObj)
 			break;
 	}
 	switch(lexer(current_key)) {
-		case exVAT:
-		case countj:
-			//ex_VAT = json_object_get_double(jObj);
-			//printf ("Ex VAT: %f ", ex_VAT);
+		case counter:
 			break;
-		case incVAT:
-			inc_VAT = json_object_get_double(jObj);
-  			//printf (" Inc VAT: %f \t", inc_VAT);
+		case cons:
+			consumption = json_object_get_double(jObj);
+  			//printf (" Consumption: %f \t", consumption);
 			break;
 		case from:
 			t_from = strdup(json_object_get_string(jObj));
-  			//printf (" From: %s \t", t_from);
+  			//printf (" J_From: %s \t", t_from);
 			break;
 		case to:
 			t_to = strdup(json_object_get_string(jObj));
-    			//printf (" To: %s \n", t_to);
+    			//printf (" J_To: %s \n", t_to);
 			break;
 		default:
 			unk_string = strdup(json_object_get_string(jObj));
-//			printf ("Unknown JSON key: %s value: %s\n", current_key, unk_string);
+			printf ("Unknown JSON key: %s value: %s\n", current_key, unk_string);
 	}
 	return print_result;
 }
@@ -359,10 +478,15 @@ json_object* json_object_parse(json_object* jObj)
 
 		}
 	}
+	if (parse_result != NULL)
+	{
+		sql_insert();
+	}
 
-	if (parse_result != NULL) sql_insert();
-
-	if (parse_result == NULL) return parse_result;
+	if (parse_result == NULL)
+	{
+		return parse_result;
+	}
 }
 
 json_object* json_parse(json_object* jObj)
@@ -403,6 +527,7 @@ int main(int argc, char* argv[])
         config_t cfg;
         config_setting_t *root;
         config_setting_t *database_g, *db_host, *db_db, *db_pwd, *db_user;
+	config_setting_t *octopus_g, *oct_api, *oct_mpan, *oct_ser;
 
         config_init(&cfg);
         if(! config_read_file(&cfg, CONFIG_FILE))
@@ -425,10 +550,20 @@ int main(int argc, char* argv[])
         db_pwd = config_setting_get_member(database_g, "sqlpwd");
         d_pwd = config_setting_get_string(db_pwd);
 
+        octopus_g = config_setting_get_member(root, "Octopus");
+
+        oct_api = config_setting_get_member(octopus_g, "api_key");
+        api_key = config_setting_get_string(oct_api);
+        oct_mpan = config_setting_get_member(octopus_g, "elec_mpan");
+        elec_mpan = config_setting_get_string(oct_mpan);
+        oct_ser = config_setting_get_member(octopus_g, "elec_ser");
+        elec_ser = config_setting_get_string(oct_ser);
+
+	setenv("TZ", "UTC", 1);
 	json_object* tariffJson;
 
 	memset(nameBuff,0,sizeof(nameBuff));
-	strncpy(nameBuff, "/tmp/tariffsfil-XXXXXX",23);
+	strncpy(nameBuff, "/tmp/consumptionXXXXXX",23);
 	int tempname = mkstemp(nameBuff);
 	outfile = fopen(nameBuff, "wb");
 
